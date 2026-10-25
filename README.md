@@ -38,7 +38,7 @@ the launcher label, application ID, JS bridge and notification channel.
 - 🔄 **Modern State Management**: MVVM architecture utilizing Kotlin Coroutines, `StateFlow`, and `collectAsStateWithLifecycle`.
 - 🧩 **Config-Driven Rebranding**: App name, application ID, version, JS bridge name, notification channel and target URL all come from `gradle.properties` / `.env`.
 - 🔒 **Scoped Permissions**: camera, microphone and geolocation are granted only to the configured origin, requested lazily when the page needs them.
-- 🛡️ **Automated CI/CD Workflows**: GitHub Actions build a signed Release APK, Debug APK and Play Store AAB on every push, publish GitHub Releases on tags, and run a build check on pull requests with strict secret validation.
+- 🛡️ **Automated CI/CD Workflows**: GitHub Actions build a signed Release APK and Play Store AAB on every push to `main` (and publish GitHub Releases on `v*` tags), with strict signing-secret validation. No debug or desktop packages are produced.
 
 ---
 
@@ -63,9 +63,8 @@ the launcher label, application ID, JS bridge and notification channel.
 webview/                        # template root
 ├── .github/
 │   └── workflows/
-│       ├── build.yml          # Build & Sign APK / AAB on push to main
-│       ├── release.yml        # Build & Publish to GitHub Releases on tag (v*)
-│       └── ci.yml             # Build check on pull requests
+│       ├── build.yml          # Build & sign Release APK + AAB on push to main
+│       └── release.yml        # Build & publish to GitHub Releases on tag (v*)
 ├── app/
 │   ├── src/
 │   │   ├── main/
@@ -137,7 +136,7 @@ block below plus the launcher artwork — no code changes required.
 
 | Key | What it controls |
 | :--- | :--- |
-| `app.name` | Launcher label, notification fallback title, JS bridge fallback token, CI artifact names |
+| `app.name` | Launcher label, notification fallback title, JS bridge fallback token |
 | `app.id` | `applicationId` (Play Store / package identity) |
 | `app.versionCode` / `app.versionName` | Local build version — CI overrides these with `-PversionCode` / `-PversionName` and auto-increments per release |
 | `app.jsBridgeName` | The injected bridge name; the web app calls `window.<name>.postNotification(...)`, `.getPushToken()`, `.isDeviceOnline()`, `.saveOfflineDraft()`, `.showToast()`, `.setTheme()` |
@@ -250,8 +249,10 @@ To trigger an official GitHub Release:
 2. The `Release to GitHub Releases` workflow will automatically:
    - Validate signing secrets.
    - Self-heal Gradle wrapper if needed.
-   - Build signed Release APK, Debug APK, and Play Store AAB.
-   - Publish a new GitHub Release with generated release notes and downloadable assets.
+   - Build the signed Release APK and Play Store AAB only.
+   - Publish a new GitHub Release (`Parent App v<version>`) with generated release notes and
+     two downloadable assets: `Parent-App-v<version>-Release.apk` and
+     `Parent-App-v<version>-PlayStore.aab`.
 
 ---
 
