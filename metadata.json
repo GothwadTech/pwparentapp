@@ -1,6 +1,6 @@
 {
-  "name": "GrixChat",
-  "description": "Offline-cached GrixChat messaging client with push notifications support.",
+  "name": "Parent App",
+  "description": "Offline-cached PW Parent App client with push notifications support.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

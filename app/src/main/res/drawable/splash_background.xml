@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Premium brand blue background -->
+    <!-- Parent App brand background -->
     <item>
-        <color android:color="#0494f4" />
+        <color android:color="@color/splash_background" />
     </item>
 
-    <!-- Centered GrixChat Curved-Logo and Typography vector -->
+    <!-- Centered Parent App brand mark -->
     <item
         android:drawable="@drawable/ic_splash_logo"
         android:gravity="center" />
