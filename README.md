@@ -24,10 +24,9 @@ production-shaped container: native Compose chrome around a hardened WebView, of
 and a retryable offline screen, scoped camera/mic/geolocation, a Room database for local data,
 and FCM push wired to a JavaScript bridge.
 
-The repository currently carries a working sample configuration — **GrixChat**
-(`grixchat.gothwad.workers.dev`) — so the template stays verifiable against a live deployment.
-That is *sample data*, not the product: see **[Using this as a template](#-using-this-as-a-template)**
-to rebrand the app from `gradle.properties` + `.env`.
+This checkout is branded as **Parent App** (`com.pw.parent`), built for the PW parent portal —
+see **[Using this as a template](#-using-this-as-a-template)** for the config block that drives
+the launcher label, application ID, JS bridge and notification channel.
 
 ---
 
@@ -71,7 +70,7 @@ webview/                        # template root
 │   ├── src/
 │   │   ├── main/
 │   │   │   ├── assets/        # App assets & graphics
-│   │   │   ├── java/com/gothwad/grixchat/
+│   │   │   ├── java/com/pw/parent/
 │   │   │   │   ├── data/      # Room Database, DAO, Repository
 │   │   │   │   ├── ui/        # Compose Screens, ViewModels, Theme
 │   │   │   │   └── utils/     # FCM Service, Notification Helpers
@@ -104,8 +103,8 @@ webview/                        # template root
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/GrixChat.git
-   cd GrixChat
+   git clone https://github.com/GothwadTech/pwparentapp.git
+   cd pwparentapp
    ```
 
 2. **Setup environment variables:**
@@ -130,9 +129,9 @@ webview/                        # template root
 
 ## 🧩 Using this as a template
 
-This repository is a **reusable WebView container**, not a single app. The current values
-(`GrixChat`, `grixchat.gothwad.workers.dev`) are a working sample: they keep the template
-verifiable against a real deployment. Nothing else in the project hardcodes the branding.
+This repository is a **reusable WebView container**. The values currently shipped
+(`Parent App`, `com.pw.parent`) are read by the build, so rebranding means editing the config
+block below plus the launcher artwork — no code changes required.
 
 ### 1. The config block (`gradle.properties`)
 
@@ -159,15 +158,17 @@ session/theme/caching behaviour follows automatically.
 
 1. Edit the `app.*` block in `gradle.properties`.
 2. Set `TARGET_URL` in `.env`.
-3. Replace the launcher icons in `app/src/main/res/mipmap-*` and `ic_splash_logo.xml`.
-4. *(Optional)* Rename the Kotlin package/classes (`com.gothwad.grixchat.*`, `Grix*` classes,
-   the `grixchat_database` Room file). These are **not** part of the config block — they are
+3. Replace the launcher artwork: drop the exported icon set in `icon.zip` (repo root) and run
+   `python3 tools/make_icons.py`. It regenerates `mipmap-*/ic_launcher*` (legacy + adaptive
+   foreground/monochrome), the density-aware splash logo and `assets/icon_512.png`.
+4. *(Optional)* Rename the Kotlin package/classes (`com.pw.parent.*`, `Parent*` classes,
+   the `parent_app_database` Room file). These are **not** part of the config block — they are
    internal identifiers, so they only matter if you want the source tree to look neutral.
 5. Add `google-services.json` + the `google-services` plugin if the app needs push (see below).
 
 > **`app.id` vs package name:** changing `applicationId` is enough for a new store listing —
-> the Kotlin `namespace` stays `com.gothwad.grixchat` and the code keeps working. Rename the
-> source package only if you care about the source layout.
+> keep the Kotlin `namespace` in sync with `app.id` to avoid drift. In this repo both are
+> `com.pw.parent`, and the sources live under `app/src/*/java/com/pw/parent/`.
 
 ### 4. What the template already handles
 
@@ -177,7 +178,7 @@ session/theme/caching behaviour follows automatically.
   the page needs them; no permission spam on first launch.
 - HTML ↔ native theme sync (MutationObserver + luma fallback), dark/light, edge-to-edge insets.
 - Room database for offline drafts + a notification log.
-- FCM service + notification channel + `GrixApp`-style JS bridge.
+- FCM service + notification channel + `ParentApp`-style JS bridge.
 
 ---
 
@@ -197,7 +198,7 @@ Both of these are required:
 
 Without them, `FirebaseApp.getApps()` is empty, the app logs
 `Firebase is not configured ... Push notifications are DISABLED.`, and
-`window.GrixApp.getPushToken()` returns a locally generated placeholder token.
+`window.ParentApp.getPushToken()` returns a locally generated placeholder token.
 (Previously the app silently initialised Firebase with a fake API key, so token
 retrieval failed forever while every piece of the notification stack *looked* connected.)
 

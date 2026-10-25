@@ -9,8 +9,8 @@
     <!-- Startup Splash Theme -->
     <style name="Theme.MyApplication.Splash" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/splash_background</item>
-        <item name="android:statusBarColor">#0494f4</item>
-        <item name="android:navigationBarColor">#0494f4</item>
+        <item name="android:statusBarColor">@color/brand_teal</item>
+        <item name="android:navigationBarColor">@color/brand_teal</item>
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
