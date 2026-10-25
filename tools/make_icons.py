@@ -32,6 +32,14 @@ DENSITIES = {
     "xxhdpi": (144, 324, 288),
     "xxxhdpi": (192, 432, 384),
 }
+# Status-bar / notification small icon sizes in px per density.
+NOTIFICATION_SIZES = {
+    "mdpi": 24,
+    "hdpi": 36,
+    "xhdpi": 48,
+    "xxhdpi": 72,
+    "xxxhdpi": 96,
+}
 LEGACY_DIRS = {
     "mdpi": "mipmap-mdpi-v4",
     "hdpi": "mipmap-hdpi-v4",
@@ -90,6 +98,10 @@ def main():
     bbox = glyph.getbbox()
     glyph = glyph.crop(bbox)
 
+    # Lower half of the mark: the three-figure family silhouette (clear at 24dp).
+    notification_mark = glyph.crop(
+        (0, int(glyph.height * 0.62), glyph.width, glyph.height))
+
     for density, (legacy, adaptive, splash) in DENSITIES.items():
         leg_dir = os.path.join(RES, "mipmap-" + density)
         os.makedirs(leg_dir, exist_ok=True)
@@ -109,12 +121,19 @@ def main():
         monochrome = fit(glyph, adaptive * 0.60, adaptive)
         monochrome.save(os.path.join(leg_dir, "ic_launcher_monochrome.png"))
 
-        # 3. Splash logo: full round icon at native density (same look as the
-        #    launcher, no upscaling artefacts).
+        # 3. Splash logo + status-bar notification icon at native density.
         splash_dir = os.path.join(RES, "drawable-" + density)
         os.makedirs(splash_dir, exist_ok=True)
         round_icon.resize((splash, splash), Image.LANCZOS).save(
             os.path.join(splash_dir, "ic_splash_logo.png"))
+
+        # Notification small icons are drawn as a white silhouette on a 24dp
+        # canvas. At that size the PW emblem + circle turns to mush, so the bold
+        # family-pair mark from the lower half of the logo is cropped out for a
+        # legible status-bar icon.
+        notif = fit(notification_mark, NOTIFICATION_SIZES[density],
+                    NOTIFICATION_SIZES[density])
+        notif.save(os.path.join(splash_dir, "ic_notification.png"))
 
     # Play Store / web asset reference kept in assets.
     assets = os.path.join(ROOT, "app/src/main/assets")

@@ -1,5 +1,9 @@
 name: Build Signed Release APK & Play Store AAB
 
+# Builds the Parent App release artifacts only:
+#   • Parent-App-v<version>-Release.apk  (signed, sideload / direct install)
+#   • Parent-App-v<version>-PlayStore.aab (signed, Play Console upload)
+
 on:
   push:
     branches: [ main, master ]
@@ -16,6 +20,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  ARTIFACT_PREFIX: Parent-App
 
 jobs:
   build:
@@ -69,11 +76,13 @@ jobs:
 
       - name: Setup Environment File
         run: |
+          # TARGET_URL (the loaded web app + trusted permission origin) comes from .env
           if [ -f .env.example ]; then
             cp .env.example .env
           else
             touch .env
           fi
+          echo "TARGET_URL source:" && grep '^TARGET_URL=' .env || true
 
       - name: Determine Version Code and Name
         id: versioning
@@ -97,23 +106,9 @@ jobs:
           echo "v_code=$V_CODE" >> $GITHUB_OUTPUT
           echo "v_name=$V_NAME" >> $GITHUB_OUTPUT
 
-      - name: Ensure Debug Keystore Exists
+      - name: Build Release APK & Play Store AAB
         run: |
-          if [ -f "debug.keystore.base64" ]; then
-            echo "Restoring debug.keystore from debug.keystore.base64..."
-            base64 -d debug.keystore.base64 > debug.keystore
-          elif [ ! -f "debug.keystore" ]; then
-            echo "Generating fallback debug.keystore..."
-            keytool -genkey -v -keystore debug.keystore \
-              -storepass android -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US" \
-              -alias androiddebugkey
-          fi
-
-      - name: Build Release APK, Debug APK and AAB Bundle with Gradle
-        run: |
-          ./gradlew assembleRelease assembleDebug bundleRelease \
+          ./gradlew assembleRelease bundleRelease \
             -PversionCode=${{ steps.versioning.outputs.v_code }} \
             -PversionName=${{ steps.versioning.outputs.v_name }} \
             --no-daemon
@@ -126,18 +121,20 @@ jobs:
           KEY_PASS: ${{ secrets.KEY_PASSWORD || secrets.KEYSTORE_PASSWORD }}
           V_NAME: ${{ steps.versioning.outputs.v_name }}
         run: |
-          echo "Locating generated Release APK, Debug APK, and AAB..."
+          echo "Locating generated Release APK and AAB..."
           UNSIGNED_APK=$(find app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
-          DEBUG_APK=$(find app/build/outputs/apk/debug/ -name "*.apk" | head -n 1)
           UNSIGNED_AAB=$(find app/build/outputs/bundle/release/ -name "*.aab" | head -n 1)
-          
-          mkdir -p output_release
 
-          # 0. Copy Debug APK directly (already signed with debug keystore)
-          if [ -n "$DEBUG_APK" ]; then
-            cp "$DEBUG_APK" output_release/GothwadTVBrowser-v${V_NAME}-Debug.apk
-            echo "Successfully included Debug APK: output_release/GothwadTVBrowser-v${V_NAME}-Debug.apk"
+          if [ -z "$UNSIGNED_APK" ]; then
+            echo "::error::Release APK was not produced by the build!"
+            exit 1
           fi
+          if [ -z "$UNSIGNED_AAB" ]; then
+            echo "::error::Release AAB was not produced by the build!"
+            exit 1
+          fi
+
+          mkdir -p output_release
 
           # Fail if keystore secret is missing (strictly enforced)
           if [ -z "$KEYSTORE_BASE64" ]; then
@@ -146,8 +143,8 @@ jobs:
           fi
 
           # Store keystore in secure temporary location outside release outputs
-          KS_PATH="/tmp/gothwad_release_key.jks"
-          
+          KS_PATH="/tmp/parent_app_release_key.jks"
+
           echo "Using Permanent Keystore from GitHub Secrets..."
           echo "$KEYSTORE_BASE64" | tr -d '\r\n ' | base64 -d > "$KS_PATH"
           if ! keytool -list -keystore "$KS_PATH" -storepass "$KEYSTORE_PASS" > /tmp/kt_diag.log 2>&1; then
@@ -158,7 +155,7 @@ jobs:
 
           # Dynamically detect exact Alias name from the keystore
           DETECTED_ALIAS=$(keytool -list -v -keystore "$KS_PATH" -storepass "$KEYSTORE_PASS" 2>/dev/null | grep -i "Alias name:" | head -n 1 | sed 's/.*Alias name: //I' | tr -d '\r' | xargs)
-          
+
           if [ -n "$KEY_ALIAS" ]; then
             ACTUAL_ALIAS="$KEY_ALIAS"
           elif [ -n "$DETECTED_ALIAS" ]; then
@@ -167,102 +164,54 @@ jobs:
             echo "::error::Could not determine keystore alias name!"
             exit 1
           fi
-          
+
           echo "Using Keystore Alias: $ACTUAL_ALIAS"
-          
+
           # Find latest zipalign and apksigner dynamically
           ZIPALIGN=$(find $ANDROID_HOME/build-tools/ -name "zipalign" | sort -V | tail -n 1)
           APKSIGNER=$(find $ANDROID_HOME/build-tools/ -name "apksigner" | sort -V | tail -n 1)
-          
-          # 1. Sign APK
-          if [ -n "$UNSIGNED_APK" ]; then
-            UNALIGNED_TEMP="/tmp/unaligned_temp.apk"
-            if [ -n "$ZIPALIGN" ]; then
-              $ZIPALIGN -v -p 4 "$UNSIGNED_APK" "$UNALIGNED_TEMP" || cp "$UNSIGNED_APK" "$UNALIGNED_TEMP"
-            else
-              cp "$UNSIGNED_APK" "$UNALIGNED_TEMP"
-            fi
-            
-            $APKSIGNER sign \
-              --ks "$KS_PATH" \
-              --ks-key-alias "$ACTUAL_ALIAS" \
-              --ks-pass "pass:$KEYSTORE_PASS" \
-              --key-pass "pass:$KEY_PASS" \
-              --out output_release/GothwadTVBrowser-v${V_NAME}-Release.apk \
-              "$UNALIGNED_TEMP"
-              
-            $APKSIGNER verify --verbose output_release/GothwadTVBrowser-v${V_NAME}-Release.apk
-            rm -f "$UNALIGNED_TEMP"
+
+          # 1. Align + sign the release APK
+          UNALIGNED_TEMP="/tmp/unaligned_temp.apk"
+          if [ -n "$ZIPALIGN" ]; then
+            $ZIPALIGN -v -p 4 "$UNSIGNED_APK" "$UNALIGNED_TEMP" || cp "$UNSIGNED_APK" "$UNALIGNED_TEMP"
+          else
+            cp "$UNSIGNED_APK" "$UNALIGNED_TEMP"
           fi
-          
-          # 2. Sign Play Store AAB Bundle using jarsigner
-          if [ -n "$UNSIGNED_AAB" ]; then
-            cp "$UNSIGNED_AAB" output_release/GothwadTVBrowser-v${V_NAME}-PlayStore.aab
-            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-              -keystore "$KS_PATH" \
-              -storepass "$KEYSTORE_PASS" -keypass "$KEY_PASS" \
-              output_release/GothwadTVBrowser-v${V_NAME}-PlayStore.aab \
-              "$ACTUAL_ALIAS"
-            echo "Successfully signed Play Store AAB!"
-          fi
+
+          $APKSIGNER sign \
+            --ks "$KS_PATH" \
+            --ks-key-alias "$ACTUAL_ALIAS" \
+            --ks-pass "pass:$KEYSTORE_PASS" \
+            --key-pass "pass:$KEY_PASS" \
+            --out "output_release/${ARTIFACT_PREFIX}-v${V_NAME}-Release.apk" \
+            "$UNALIGNED_TEMP"
+
+          $APKSIGNER verify --verbose "output_release/${ARTIFACT_PREFIX}-v${V_NAME}-Release.apk"
+          rm -f "$UNALIGNED_TEMP"
+
+          # 2. Sign the Play Store AAB using jarsigner
+          cp "$UNSIGNED_AAB" "output_release/${ARTIFACT_PREFIX}-v${V_NAME}-PlayStore.aab"
+          jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+            -keystore "$KS_PATH" \
+            -storepass "$KEYSTORE_PASS" -keypass "$KEY_PASS" \
+            "output_release/${ARTIFACT_PREFIX}-v${V_NAME}-PlayStore.aab" \
+            "$ACTUAL_ALIAS"
+          jarsigner -verify "output_release/${ARTIFACT_PREFIX}-v${V_NAME}-PlayStore.aab"
+          echo "Successfully signed Play Store AAB!"
 
           # Securely destroy the temporary keystore file so it is never exposed or uploaded
           rm -f "$KS_PATH"
           echo "Keystore securely cleaned up."
 
-      - name: Build Linux Packages (.deb & .tar.gz)
-        run: |
-          if [ -f packaging/linux/build-linux-packages.sh ]; then
-            chmod +x packaging/linux/build-linux-packages.sh
-            RELEASE_APK="output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-Release.apk"
-            if [ ! -f "$RELEASE_APK" ]; then
-              RELEASE_APK="output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-Debug.apk"
-            fi
-            ./packaging/linux/build-linux-packages.sh \
-              "$RELEASE_APK" \
-              "${{ steps.versioning.outputs.v_name }}" \
-              "output_release"
-          else
-            echo "packaging/linux/build-linux-packages.sh not found, skipping."
-          fi
+          ls -lh output_release/
 
-      - name: Build Windows Package (.zip)
-        run: |
-          if [ -f packaging/windows/build-windows-package.sh ]; then
-            chmod +x packaging/windows/build-windows-package.sh
-            RELEASE_APK="output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-Release.apk"
-            if [ ! -f "$RELEASE_APK" ]; then
-              RELEASE_APK="output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-Debug.apk"
-            fi
-            ./packaging/windows/build-windows-package.sh \
-              "$RELEASE_APK" \
-              "${{ steps.versioning.outputs.v_name }}" \
-              "output_release"
-          else
-            echo "packaging/windows/build-windows-package.sh not found, skipping."
-          fi
-
-      - name: Build macOS Package (.app in .zip)
-        run: |
-          if [ -f packaging/macos/build-macos-package.sh ]; then
-            chmod +x packaging/macos/build-macos-package.sh
-            RELEASE_APK="output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-Release.apk"
-            if [ ! -f "$RELEASE_APK" ]; then
-              RELEASE_APK="output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-Debug.apk"
-            fi
-            ./packaging/macos/build-macos-package.sh \
-              "$RELEASE_APK" \
-              "${{ steps.versioning.outputs.v_name }}" \
-              "output_release"
-          else
-            echo "packaging/macos/build-macos-package.sh not found, skipping."
-          fi
-
-      - name: Upload Signed Release APK, Debug APK, AAB, Linux, Windows & macOS Packages
+      - name: Upload Release APK & AAB
         uses: actions/upload-artifact@v4
         with:
-          name: Gothwad-TV-Browser-v${{ steps.versioning.outputs.v_name }}-Build${{ steps.versioning.outputs.v_code }}
+          name: Parent-App-v${{ steps.versioning.outputs.v_name }}-Build${{ steps.versioning.outputs.v_code }}
           path: output_release/
+          if-no-files-found: error
 
       - name: Create Automatic GitHub Release
         uses: softprops/action-gh-release@v2
@@ -270,16 +219,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ steps.versioning.outputs.v_name }}
-          name: v${{ steps.versioning.outputs.v_name }}
+          name: Parent App v${{ steps.versioning.outputs.v_name }}
           draft: false
           prerelease: false
           generate_release_notes: true
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
-            output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-Release.apk
-            output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-Debug.apk
-            output_release/GothwadTVBrowser-v${{ steps.versioning.outputs.v_name }}-PlayStore.aab
-            output_release/gothwad-browser_${{ steps.versioning.outputs.v_name }}_all.deb
-            output_release/gothwad-browser-linux-v${{ steps.versioning.outputs.v_name }}.tar.gz
-            output_release/gothwad-browser-windows-${{ steps.versioning.outputs.v_name }}.zip
-            output_release/gothwad-browser-macos-${{ steps.versioning.outputs.v_name }}.zip
+            output_release/Parent-App-v${{ steps.versioning.outputs.v_name }}-Release.apk
+            output_release/Parent-App-v${{ steps.versioning.outputs.v_name }}-PlayStore.aab

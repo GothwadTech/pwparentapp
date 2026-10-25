@@ -1,6 +1,6 @@
 {
   "name": "Parent App",
-  "description": "Offline-cached PW Parent App client with push notifications support.",
+  "description": "Native Android container for the PW Parent App (pwparent.pages.dev) with push notifications.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

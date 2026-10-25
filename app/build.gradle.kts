@@ -62,12 +62,6 @@ android {
         keyPassword = System.getenv("KEY_PASSWORD")
       }
     }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
-    }
   }
 
   buildTypes {
@@ -80,9 +74,8 @@ android {
         signingConfig = releaseSigning
       }
     }
-    debug {
-      signingConfig = signingConfigs.getByName("debugConfig")
-    }
+    // Debug builds use AGP's default debug keystore (~/.android/debug.keystore), so no
+    // checked-in debug.keystore is needed locally or in CI.
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
