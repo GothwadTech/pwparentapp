@@ -69,27 +69,21 @@ class ParentJavascriptInterface(
     }
 
     /**
-     * Notify native Android container of a theme change with dark parameter (boolean).
-     * JavaScript call: window.<app.jsBridgeName>.setTheme(true);
+     * Kept for web-app compatibility. The Parent App is LIGHT-ONLY, so this is a no-op:
+     * the site cannot switch the native chrome (status bar, navigation bar, splash) to dark.
+     * JavaScript call: window.<app.jsBridgeName>.setTheme(true);  // ignored
      */
     @JavascriptInterface
     fun setTheme(isDark: Boolean) {
-        Log.d(tag, "setTheme(Boolean) received: isDark=$isDark")
-        viewModel.setDarkThemeOverride(isDark)
+        Log.d(tag, "setTheme(Boolean) received: isDark=$isDark (ignored — app is light-only)")
     }
 
     /**
-     * Notify native Android container of a theme change with theme name (string).
-     * JavaScript call: window.<app.jsBridgeName>.setTheme("dark"); or window.<app.jsBridgeName>.setTheme("light");
+     * Kept for web-app compatibility. LIGHT-ONLY host: dark requests are ignored.
+     * JavaScript call: window.<app.jsBridgeName>.setTheme("dark");  // ignored
      */
     @JavascriptInterface
     fun setTheme(theme: String) {
-        val isDark = when (theme.lowercase().trim()) {
-            "dark" -> true
-            "light" -> false
-            else -> null
-        }
-        Log.d(tag, "setTheme(String) received: theme=$theme -> mapped isDark=$isDark")
-        viewModel.setDarkThemeOverride(isDark)
+        Log.d(tag, "setTheme(String) received: theme=$theme (ignored — app is light-only)")
     }
 }

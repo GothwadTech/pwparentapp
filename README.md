@@ -32,7 +32,7 @@ the launcher label, application ID, JS bridge and notification channel.
 
 ## ✨ Key Features
 
-- 🎨 **Material 3 & Edge-to-Edge**: Modern UI design following the latest Material Design 3 guidelines, dynamic theming with dark mode support, and seamless edge-to-edge drawing.
+- 🎨 **Light-only Material 3 chrome**: The hosted web app is light-only, so the container is too — pure white (`#FFFFFF`) status bar and navigation bar with dark system icons, no system-dynamic-color or dark-theme switching, no WebView auto-darkening.
 - ⚡ **Offline-First Reliability**: Integrated Room Database along with WebView ServiceWorker caching ensuring fast load times and uninterrupted offline experience.
 - 🔔 **Push Notifications**: Firebase Cloud Messaging (FCM) plumbing with a configurable notification channel and a JavaScript bridge the web app can call — activate it by adding `google-services.json` (see below).
 - 🔄 **Modern State Management**: MVVM architecture utilizing Kotlin Coroutines, `StateFlow`, and `collectAsStateWithLifecycle`.
@@ -175,7 +175,13 @@ session/theme/caching behaviour follows automatically.
   retryable offline panel over a still-mounted WebView (page state survives a network blip).
 - Permission scoping: camera/mic/geolocation only for `TARGET_URL`'s origin, asked lazily when
   the page needs them; no permission spam on first launch.
-- HTML ↔ native theme sync (MutationObserver + luma fallback), dark/light, edge-to-edge insets.
+- Light-only rendering: force-dark and Android 13+ algorithmic darkening are switched off, the
+  WebView background is white and the page's `color-scheme` is pinned to `light`.
+- **Launch splash**: `androidx.core:splash-screen` keeps the branded splash (white + app icon)
+  on screen until the WebView reports its first committed frame (`onPageCommitVisible`), with a
+  12-second hard timeout as a safety net — so there is never a blank window between splash and site.
+- Loading feedback is a 2dp progress bar at the top instead of a full-screen scrim, so the page
+  is never covered while it loads.
 - Room database for offline drafts + a notification log.
 - FCM service + notification channel + `ParentApp`-style JS bridge.
 

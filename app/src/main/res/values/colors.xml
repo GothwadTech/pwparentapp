@@ -11,5 +11,8 @@
     <!-- Brand colours taken from the supplied Parent App artwork -->
     <color name="brand_teal">#FF005677</color>
     <color name="ic_launcher_background">#FF005677</color>
-    <color name="splash_background">#FF005677</color>
+
+    <!-- Light-only chrome: window / status bar / navigation bar are all pure white -->
+    <color name="app_background">#FFFFFFFF</color>
+    <color name="splash_background">#FFFFFFFF</color>
 </resources>
