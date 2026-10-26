@@ -47,9 +47,6 @@ class ParentViewModel(
     private val _isWebViewError = MutableStateFlow(false)
     val isWebViewError: StateFlow<Boolean> = _isWebViewError.asStateFlow()
 
-    private val _isDarkThemeOverride = MutableStateFlow<Boolean?>(null)
-    val isDarkThemeOverride: StateFlow<Boolean?> = _isDarkThemeOverride.asStateFlow()
-
     private val _showSettingsDialog = MutableStateFlow(false)
     val showSettingsDialog: StateFlow<Boolean> = _showSettingsDialog.asStateFlow()
 
@@ -135,10 +132,6 @@ class ParentViewModel(
 
         return host.equals(trustedHost, ignoreCase = true) ||
             host.endsWith(".$trustedHost", ignoreCase = true)
-    }
-
-    fun setDarkThemeOverride(isDark: Boolean?) {
-        _isDarkThemeOverride.value = isDark
     }
 
     fun setShowSettings(show: Boolean) {

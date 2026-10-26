@@ -10,11 +10,15 @@ import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.*
-import android.widget.Toast
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
 import android.app.Activity
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,7 +27,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Warning
@@ -51,11 +54,62 @@ import com.pw.parent.ui.ParentJavascriptInterface
 import com.pw.parent.ui.theme.MyApplicationTheme
 import com.pw.parent.utils.ParentNotificationHelper
 
+/**
+ * One-shot handshake between the WebView and the launch splash.
+ *
+ * The splash stays on screen only while the web app has not painted its first frame, so the
+ * user never sees a blank white window between the brand splash and the site.
+ * [markContentVisible] is called from WebViewClient as soon as the first frame is committed
+ * (or when the main frame fails, so the retry panel can appear), and the hard timeout in
+ * [MainActivity] guarantees the splash can never hang forever.
+ */
+internal object SplashGate {
+
+    @Volatile private var contentVisible: Boolean = false
+
+    @Volatile private var timedOut: Boolean = false
+
+    /** True once the splash may be removed (content painted, error shown, or timeout hit). */
+    val isReady: Boolean
+        get() = contentVisible || timedOut
+
+    fun markContentVisible() {
+        contentVisible = true
+    }
+
+    fun markTimedOut() {
+        timedOut = true
+    }
+}
+
 class MainActivity : ComponentActivity() {
+
+    private val splashHandler = Handler(Looper.getMainLooper())
+    private val splashTimeout = Runnable { SplashGate.markTimedOut() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        setTheme(R.style.Theme_MyApplication)
+        // Splash FIRST (before super.onCreate): androidX core-splashscreen keeps the branded
+        // splash on screen until SplashGate.isReady, which the WebView flips as soon as the
+        // first page frame is committed — no blank screen in between, on every device.
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { SplashGate.isReady }
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+
+        // Safety net: never let a slow/hanging network trap the user on the splash.
+        splashHandler.postDelayed(splashTimeout, 12_000L)
+
+        // Light-only chrome: white status bar + white navigation bar with DARK system icons
+        // (clock, battery, wifi, gesture/3-button icons) on every API level. The Compose
+        // surfaces behind the bars are pure white too, so the bars never look tinted.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(android.graphics.Color.WHITE, android.graphics.Color.WHITE),
+            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.WHITE, android.graphics.Color.WHITE)
+        )
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
+        }
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
 
         // Setup global WebView ServiceWorker preferences for robust offline background caching
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -121,34 +175,45 @@ class MainActivity : ComponentActivity() {
                 factory = ParentViewModelFactory(application, repository)
             )
 
-            val isDarkThemeOverride by parentViewModel.isDarkThemeOverride.collectAsStateWithLifecycle()
-            val systemIsDark = isSystemInDarkTheme()
-            val useDarkTheme = isDarkThemeOverride ?: systemIsDark
-
-            MyApplicationTheme(darkTheme = useDarkTheme) {
+            // Light-only: the container never follows the system dark theme.
+            MyApplicationTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ParentAppScreen(viewModel = parentViewModel, isDarkTheme = useDarkTheme)
+                    ParentAppScreen(viewModel = parentViewModel)
                 }
             }
         }
     }
 }
 
+/** Forces light UA styling (form controls, scrollbars, `prefers-color-scheme`) on the page. */
+private const val LIGHT_MODE_JS = """
+(function() {
+  try {
+    var doc = document.documentElement;
+    if (!doc) return;
+    doc.style.colorScheme = 'light';
+    if (!doc.querySelector('meta[name="color-scheme"]')) {
+      var meta = document.createElement('meta');
+      meta.name = 'color-scheme';
+      meta.content = 'light';
+      (document.head || doc).appendChild(meta);
+    }
+  } catch (e) {}
+})();
+"""
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun ParentAppScreen(viewModel: ParentViewModel, isDarkTheme: Boolean) {
+fun ParentAppScreen(viewModel: ParentViewModel) {
     val context = LocalContext.current
     val isOnline by viewModel.isOnline.collectAsStateWithLifecycle()
     val isError by viewModel.isWebViewError.collectAsStateWithLifecycle()
     val progress by viewModel.loadProgress.collectAsStateWithLifecycle()
 
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
-
-    // Names the web app and the container share; both are template configuration.
-    val jsBridgeName = BuildConfig.JS_BRIDGE_NAME
 
     // Passed into the AndroidView factory as a plain callback (state writes stay out of the factory)
     val onWebViewReady: (WebView) -> Unit = { webViewInstance = it }
@@ -277,6 +342,10 @@ fun ParentAppScreen(viewModel: ParentViewModel, isDarkTheme: Boolean) {
                                 // Enable hardware acceleration for high-end rendering (e.g. CSS glassmorphism, backdrop filters)
                                 setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
 
+                                // Light-only: a pure white surface behind the page, so a repaint or a
+                                // navigation never flashes the default grey/black WebView canvas.
+                                setBackgroundColor(android.graphics.Color.WHITE)
+
                                 // Synchronously compute current connectivity to bypass race conditions on first frame
                                 val connectivityManager = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
                                 val activeNetwork = connectivityManager.activeNetwork
@@ -299,25 +368,27 @@ fun ParentAppScreen(viewModel: ParentViewModel, isDarkTheme: Boolean) {
                                     textZoom = 100 // Enforce default font scale; prevents system accessibility settings from scrambling column layout
                                     mediaPlaybackRequiresUserGesture = false // Crucial: allows WebRTC / camera video stream to play automatically without showing a play button
                                     
-                                    // Handle dynamic dark mode / light mode selection based on system theme
+                                    // LIGHT-ONLY: the web app has no dark theme, so the WebView must
+                                    // never auto-darken it — not from the system dark setting, not from
+                                    // algorithmic darkening on Android 13+.
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                         try {
-                                            isAlgorithmicDarkeningAllowed = isDarkTheme
+                                            isAlgorithmicDarkeningAllowed = false
                                         } catch (e: Exception) {
-                                            android.util.Log.e("MainActivity", "Failed to set algorithmic darkening", e)
+                                            android.util.Log.e("MainActivity", "Failed to disable algorithmic darkening", e)
                                         }
                                     }
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                         try {
                                             @Suppress("DEPRECATION")
-                                            forceDark = if (isDarkTheme) {
-                                                WebSettings.FORCE_DARK_ON
-                                            } else {
-                                                WebSettings.FORCE_DARK_OFF
-                                            }
+                                            forceDark = WebSettings.FORCE_DARK_OFF
                                         } catch (e: Exception) {
-                                            android.util.Log.e("MainActivity", "Failed to set force dark", e)
+                                            android.util.Log.e("MainActivity", "Failed to disable force dark", e)
                                         }
+                                    }
+                                    // Faster first paint: prerender offscreen while the splash is up
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                        offscreenPreRaster = true
                                     }
 
                                     cacheMode = if (actuallyOnline) {
@@ -360,63 +431,23 @@ fun ParentAppScreen(viewModel: ParentViewModel, isDarkTheme: Boolean) {
                                     override fun onPageFinished(view: WebView?, url: String?) {
                                         super.onPageFinished(view, url)
                                         viewModel.setLoadProgress(100)
-                                        
-                                        // Inject an observer/evaluator script to capture and mirror website light/dark theme toggle triggers
-                                        view?.evaluateJavascript(
-                                            """
-                                            (function() {
-                                                function checkAndUpdateTheme() {
-                                                    var isDark = false;
-                                                    
-                                                    // 1. Check for standard Tailwind/Next/Bootstrap dark mode class lists or data attributes
-                                                    if (document.documentElement.classList.contains('dark') || 
-                                                        document.body.classList.contains('dark') ||
-                                                        document.documentElement.getAttribute('data-theme') === 'dark' ||
-                                                        document.body.getAttribute('data-theme') === 'dark' ||
-                                                        document.documentElement.classList.contains('theme-dark') ||
-                                                        document.body.classList.contains('theme-dark')) {
-                                                        isDark = true;
-                                                    } else {
-                                                        // 2. Fallback: Luma-based analysis of body background color for un-annotated dark themes
-                                                        try {
-                                                            var bg = window.getComputedStyle(document.body).backgroundColor;
-                                                            if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') {
-                                                                var rgb = bg.match(/\d+/g);
-                                                                if (rgb && rgb.length >= 3) {
-                                                                    var r = parseInt(rgb[0]);
-                                                                    var g = parseInt(rgb[1]);
-                                                                    var b = parseInt(rgb[2]);
-                                                                    var luma = (r * 299 + g * 587 + b * 114) / 1000;
-                                                                    if (luma < 120) {
-                                                                        isDark = true;
-                                                                    }
-                                                                }
-                                                            }
-                                                        } catch(e) {}
-                                                    }
-                                                    
-                                                    if (window.${jsBridgeName} && window.${jsBridgeName}.setTheme) {
-                                                        window.${jsBridgeName}.setTheme(isDark);
-                                                    }
-                                                }
-                                                
-                                                // Execute immediately on finish
-                                                checkAndUpdateTheme();
-                                                
-                                                // Create a DOM MutationObserver to dynamically react to client-side switch toggles
-                                                try {
-                                                    var themeObserver = new MutationObserver(function() {
-                                                        checkAndUpdateTheme();
-                                                    });
-                                                    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
-                                                    if (document.body) {
-                                                        themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class', 'data-theme'] });
-                                                    }
-                                                } catch(err) {}
-                                            })();
-                                            """.trimIndent(),
-                                            null
-                                        )
+
+                                        // Light-only container: force the page's own color-scheme to light so
+                                        // the browser never applies OS dark-mode form controls / scrollbars,
+                                        // then tell the splash it can go away — the page is visible now.
+                                        view?.evaluateJavascript(LIGHT_MODE_JS, null)
+                                        SplashGate.markContentVisible()
+
+                                        // Second call after first layout: some SPAs set their <meta
+                                        // name="color-scheme"> after hydration, which would re-enable dark UA styles.
+                                        view?.postDelayed({ view.evaluateJavascript(LIGHT_MODE_JS, null) }, 350L)
+                                    }
+
+                                    override fun onPageCommitVisible(view: WebView?, url: String?) {
+                                        super.onPageCommitVisible(view, url)
+                                        // Fires when the first frame of the new document is on screen —
+                                        // the exact moment the splash can be dismissed without a blank flash.
+                                        SplashGate.markContentVisible()
                                     }
 
                                     override fun onReceivedError(
@@ -426,6 +457,8 @@ fun ParentAppScreen(viewModel: ParentViewModel, isDarkTheme: Boolean) {
                                     ) {
                                         if (request?.isForMainFrame == true) {
                                             viewModel.setWebViewError(true)
+                                            // Show the retry panel instead of leaving the splash up forever.
+                                            SplashGate.markContentVisible()
                                         }
                                     }
 
@@ -438,6 +471,7 @@ fun ParentAppScreen(viewModel: ParentViewModel, isDarkTheme: Boolean) {
                                     ) {
                                         if (failingUrl != null && failingUrl.trimEnd('/').equals(viewModel.targetUrl.trimEnd('/'), ignoreCase = true)) {
                                             viewModel.setWebViewError(true)
+                                            SplashGate.markContentVisible()
                                         }
                                     }
                                 }
@@ -573,26 +607,22 @@ fun ParentAppScreen(viewModel: ParentViewModel, isDarkTheme: Boolean) {
                                 WebSettings.LOAD_CACHE_ELSE_NETWORK
                             }
                             
-                             // Dynamic theme update for WebView
-                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                 try {
-                                     webView.settings.isAlgorithmicDarkeningAllowed = isDarkTheme
-                                 } catch (e: Exception) {
-                                     // ignore 
-                                 }
-                             }
-                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                 try {
-                                     @Suppress("DEPRECATION")
-                                     webView.settings.forceDark = if (isDarkTheme) {
-                                         WebSettings.FORCE_DARK_ON
-                                     } else {
-                                         WebSettings.FORCE_DARK_OFF
-                                     }
-                                 } catch (e: Exception) {
-                                     // ignore
-                                 }
-                             }
+                             // Light-only: keep auto-darkening switched off on every recomposition.
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                try {
+                                    webView.settings.isAlgorithmicDarkeningAllowed = false
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                            }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                try {
+                                    @Suppress("DEPRECATION")
+                                    webView.settings.forceDark = WebSettings.FORCE_DARK_OFF
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                            }
 
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                                 try {
@@ -632,26 +662,26 @@ fun ParentAppScreen(viewModel: ParentViewModel, isDarkTheme: Boolean) {
                         }
                     }
 
-                    // Elegantly fade-out loading spinner overlay on page transitions
+                    // Loading feedback WITHOUT covering the page.
+                    // The old 85%-opaque full-screen scrim (plus a centered spinner) made the app
+                    // look like a blank white screen while the site loaded. A 2dp progress bar at
+                    // the top keeps the previous/current page fully visible instead, and it stays
+                    // out of the way once the document is committed (progress == 100).
                     androidx.compose.animation.AnimatedVisibility(
                         visible = progress < 100 && !isError,
-                        enter = fadeIn(animationSpec = tween(200)),
-                        exit = fadeOut(animationSpec = tween(400))
+                        enter = fadeIn(animationSpec = tween(120)),
+                        exit = fadeOut(animationSpec = tween(300)),
+                        modifier = Modifier.align(Alignment.TopCenter)
                     ) {
-                        Box(
+                        LinearProgressIndicator(
+                            progress = { progress.coerceIn(0, 100) / 100f },
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                             modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 4.dp,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .testTag("page_loader_spinner")
-                            )
-                        }
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .testTag("page_loader_bar")
+                        )
                     }
 
                 // Error panel overlays the still-mounted WebView, so Retry can talk to a

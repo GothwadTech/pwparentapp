@@ -1,0 +1,62 @@
+name: CI — Build Check
+
+# Compile-only check for pull requests: builds the unsigned release APK so a broken
+# Kotlin/Gradle/resource change is caught before it reaches main. Nothing is published.
+
+on:
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-check:
+    name: Compile Release APK (unsigned)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17 (JDK)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Validate or Recreate Gradle Wrapper
+        run: |
+          mkdir -p gradle/wrapper
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ] || ! jar tf gradle/wrapper/gradle-wrapper.jar >/dev/null 2>&1; then
+            echo "⚠️ Gradle wrapper jar is missing or corrupted. Downloading fresh wrapper jar..."
+            rm -f gradle/wrapper/gradle-wrapper.jar
+            curl -sSL -o gradle/wrapper/gradle-wrapper.jar https://raw.githubusercontent.com/gradle/gradle/v9.3.1/gradle/wrapper/gradle-wrapper.jar || \
+            curl -sSL -o gradle/wrapper/gradle-wrapper.jar https://github.com/gradle/gradle/raw/v9.3.1/gradle/wrapper/gradle-wrapper.jar
+          else
+            echo "✅ Gradle wrapper jar is valid."
+          fi
+          chmod +x ./gradlew
+
+      - name: Setup Environment File
+        run: |
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            touch .env
+          fi
+          grep '^TARGET_URL=' .env || true
+
+      - name: Assemble Release (unsigned)
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Upload Unsigned APK (debugging aid)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Parent-App-unsigned-release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: warn
+          retention-days: 7

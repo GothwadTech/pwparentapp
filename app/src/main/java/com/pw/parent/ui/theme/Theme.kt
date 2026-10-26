@@ -1,33 +1,17 @@
 package com.pw.parent.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
+import android.app.Activity
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
-import android.app.Activity
 
-private val DarkColorScheme = darkColorScheme(
-    primary = ParentPrimary,
-    secondary = ParentSecondary,
-    tertiary = ParentAccent,
-    background = ParentDarkBackground,
-    surface = ParentSurfaceDark,
-    surfaceVariant = ParentSurfaceCard,
-    onPrimary = ParentDarkBackground,
-    onSecondary = ParentDarkBackground,
-    onBackground = ParentLightBackground,
-    onSurface = ParentLightBackground
-)
-
+// The Parent App is a light-only product: the web app it hosts has no dark theme, so the
+// native chrome (status bar, navigation bar, error panels, progress bar) stays pure white
+// with dark system icons. There is intentionally no dark color scheme any more — the
+// system dark toggle must never change how the container looks.
 private val LightColorScheme = lightColorScheme(
     primary = ParentPrimaryLight,
     secondary = ParentSecondaryLight,
@@ -43,34 +27,26 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Allow dynamic colors on API 31+
-    dynamicColor: Boolean = false,
+    // Kept for call-site compatibility (tests / previews pass it); the app is light-only,
+    // so the value is ignored on purpose.
+    @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
     val view = LocalView.current
     if (!view.isInEditMode) {
         val window = (view.context as? Activity)?.window
         if (window != null) {
             SideEffect {
+                // White bars + dark icons on every API level.
                 val insetsController = WindowCompat.getInsetsController(window, view)
-                insetsController.isAppearanceLightStatusBars = !darkTheme
-                insetsController.isAppearanceLightNavigationBars = !darkTheme
+                insetsController.isAppearanceLightStatusBars = true
+                insetsController.isAppearanceLightNavigationBars = true
             }
         }
     }
 
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = LightColorScheme,
         typography = Typography,
         content = content
     )

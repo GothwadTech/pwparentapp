@@ -1,18 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- The Parent App is a LIGHT-ONLY product: the web app has no dark theme, so the
+         native chrome (status bar, navigation bar, window background) stays pure white
+         with dark system icons. There is no values-night copy on purpose. -->
     <style name="Theme.MyApplication" parent="android:Theme.Material.Light.NoActionBar">
-        <!-- Prevent system/OS-level force dark from auto-darkening our UI, ensuring we rely strictly on Jetpack Compose and our WebView configurations -->
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:colorBackground">@color/app_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Dark (black) clock / battery / gesture icons on the white bars -->
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <!-- System force-dark must never touch the container -->
         <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
     </style>
 
-    <!-- Startup Splash Theme -->
-    <style name="Theme.MyApplication.Splash" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@drawable/splash_background</item>
-        <item name="android:statusBarColor">@color/brand_teal</item>
-        <item name="android:navigationBarColor">@color/brand_teal</item>
-        <item name="android:windowFullscreen">false</item>
-        <item name="android:windowContentOverlay">@null</item>
+    <!--
+      Launch splash. androidX core-splashscreen keeps this on screen until the WebView has
+      painted its first frame (see MainActivity/SplashGate), so the branded splash is
+      identical on every device and no blank/white flash appears in between.
+    -->
+    <style name="Theme.MyApplication.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_round</item>
+        <item name="postSplashScreenTheme">@style/Theme.MyApplication</item>
+        <!-- Pre-API-31 fallback: the compat lib paints the icon over this background -->
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:statusBarColor">@color/splash_background</item>
+        <item name="android:navigationBarColor">@color/splash_background</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
         <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
     </style>
 </resources>
