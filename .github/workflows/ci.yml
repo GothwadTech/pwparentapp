@@ -55,10 +55,12 @@ jobs:
       - name: Run reminder unit tests (schedule + swipe trigger)
         run: |
           # gradle.properties pins kotlin.compiler.execution.strategy=in-process, which makes KSP
-          # crash for the unit-test variant ("ApplicationManager.getApplication() is null"), so
-          # the test task is run with the daemon strategy instead.
+          # crash for the unit-test variant ("ApplicationManager.getApplication() is null").
+          # Overriding it on the command line is not enough (KSP reads the file value), so the
+          # file itself is patched for this step only — the release build above already ran.
+          sed -i 's/^kotlin.compiler.execution.strategy=.*/kotlin.compiler.execution.strategy=daemon/' gradle.properties
+          grep '^kotlin.compiler.execution.strategy' gradle.properties
           ./gradlew testReleaseUnitTest --no-daemon --stacktrace \
-            -Pkotlin.compiler.execution.strategy=daemon \
             --tests "com.pw.parent.ReminderScheduleTest" \
             --tests "com.pw.parent.ReminderSwipeTrackerTest"
 
