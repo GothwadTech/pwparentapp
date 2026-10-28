@@ -22,3 +22,11 @@ debug.keystore
 output/
 .build-outputs/
 build/
+
+# extracted video frames / raw recordings (never commit media)
+/videos/
+/frames/
+*.mp4
+*.mov
+*.mkv
+*.webm
