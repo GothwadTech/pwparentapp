@@ -37,7 +37,7 @@ class ReminderSwipeTracker(
     private var startY = 0f
     private var swipes = 0
     private var windowStart = 0L
-    private var lastFired = Long.MIN_VALUE
+    private var lastFired = Long.MIN_VALUE / 2 // never overflowed by `timeMs - lastFired`
 
     /** True when the touch started inside the top strip, i.e. it may become a swipe. */
     fun onDown(x: Float, y: Float, timeMs: Long): Boolean {
@@ -75,7 +75,10 @@ class ReminderSwipeTracker(
         // Two swipes collected: fire once, then stay quiet for the cooldown period.
         swipes = 0
         windowStart = timeMs
-        if (timeMs - lastFired < cooldownMs) return Outcome.NONE
+        // Guard the subtraction: `timeMs - Long.MIN_VALUE` would overflow and silently suppress
+        // the very first notification.
+        val sinceLastFire = timeMs - lastFired
+        if (sinceLastFire in 0 until cooldownMs) return Outcome.NONE
         lastFired = timeMs
         return Outcome.FIRE
     }
