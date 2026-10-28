@@ -52,6 +52,12 @@ jobs:
       - name: Assemble Release (unsigned)
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
+      - name: Run reminder unit tests (schedule + swipe trigger)
+        run: |
+          ./gradlew testReleaseUnitTest --no-daemon --stacktrace \
+            --tests "com.pw.parent.ReminderScheduleTest" \
+            --tests "com.pw.parent.ReminderSwipeTrackerTest"
+
       - name: Upload Unsigned APK (debugging aid)
         if: always()
         uses: actions/upload-artifact@v4

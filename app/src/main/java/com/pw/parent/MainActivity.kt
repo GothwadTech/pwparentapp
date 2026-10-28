@@ -138,6 +138,11 @@ class MainActivity : ComponentActivity() {
         // Create the notification channels on launch
         ParentNotificationHelper.createNotificationChannel(applicationContext)
 
+        // Local scheduled reminders (Monday, every 2 hours, 06:00–18:00). These need no
+        // Firebase and no backend: WorkManager fires them on-device. Recomputing the next slot
+        // on every launch keeps the schedule accurate after reboots, time changes or kills.
+        com.pw.parent.utils.ReminderScheduler.ensureScheduled(applicationContext)
+
         // Setup repository
         val database = ParentDatabase.getDatabase(applicationContext)
         val repository = ParentRepository(database.parentDao())
@@ -592,6 +597,14 @@ fun ParentAppScreen(viewModel: ParentViewModel) {
                                     ParentJavascriptInterface(ctx, viewModel),
                                     BuildConfig.JS_BRIDGE_NAME
                                 )
+
+                                // Hidden QA gesture: two horizontal swipes in the strip just below
+                                // the status bar post one reminder, so the notification can be
+                                // checked without waiting for Monday. Never consumes the touch,
+                                // so the page keeps scrolling normally.
+                                com.pw.parent.utils.ReminderSwipeDetector.attach(this) {
+                                    android.util.Log.d("MainActivity", "Test reminder fired by swipe")
+                                }
 
                                 loadUrl(viewModel.targetUrl)
 
