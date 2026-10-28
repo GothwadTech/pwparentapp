@@ -60,7 +60,10 @@ jobs:
           # file itself is patched for this step only — the release build above already ran.
           sed -i 's/^kotlin.compiler.execution.strategy=.*/kotlin.compiler.execution.strategy=daemon/' gradle.properties
           grep '^kotlin.compiler.execution.strategy' gradle.properties
+          # KSP2 additionally needs an IntelliJ application in this environment; the KSP1
+          # fallback processes the same sources without it.
           ./gradlew testReleaseUnitTest --no-daemon --stacktrace \
+            -Pksp.useKSP2=false \
             --tests "com.pw.parent.ReminderScheduleTest" \
             --tests "com.pw.parent.ReminderSwipeTrackerTest"
 
