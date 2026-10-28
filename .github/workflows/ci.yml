@@ -54,7 +54,11 @@ jobs:
 
       - name: Run reminder unit tests (schedule + swipe trigger)
         run: |
+          # gradle.properties pins kotlin.compiler.execution.strategy=in-process, which makes KSP
+          # crash for the unit-test variant ("ApplicationManager.getApplication() is null"), so
+          # the test task is run with the daemon strategy instead.
           ./gradlew testReleaseUnitTest --no-daemon --stacktrace \
+            -Pkotlin.compiler.execution.strategy=daemon \
             --tests "com.pw.parent.ReminderScheduleTest" \
             --tests "com.pw.parent.ReminderSwipeTrackerTest"
 
