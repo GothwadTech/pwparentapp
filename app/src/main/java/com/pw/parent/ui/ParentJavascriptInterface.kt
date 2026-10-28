@@ -69,6 +69,36 @@ class ParentJavascriptInterface(
     }
 
     /**
+     * True when the on-device weekly reminders (Monday, every 2 hours, 06:00–18:00) are enabled.
+     * JavaScript call: window.<app.jsBridgeName>.getRemindersEnabled();
+     */
+    @JavascriptInterface
+    fun getRemindersEnabled(): Boolean {
+        return com.pw.parent.utils.ReminderScheduler.isEnabled(context)
+    }
+
+    /**
+     * Let the web app turn the local reminders on/off (e.g. a settings toggle).
+     * These are scheduled on the device itself — no Firebase, no server needed.
+     * JavaScript call: window.<app.jsBridgeName>.setRemindersEnabled(false);
+     */
+    @JavascriptInterface
+    fun setRemindersEnabled(enabled: Boolean) {
+        Log.d(tag, "setRemindersEnabled: $enabled")
+        com.pw.parent.utils.ReminderScheduler.setEnabled(context, enabled)
+    }
+
+    /**
+     * Post a reminder immediately (same copy/layout as the Monday ones) so the notification can
+     * be verified without waiting for the schedule. Returns the title that was shown.
+     * JavaScript call: window.<app.jsBridgeName>.sendTestReminder();
+     */
+    @JavascriptInterface
+    fun sendTestReminder(): String {
+        return com.pw.parent.utils.ReminderScheduler.sendTestNotification(context).first
+    }
+
+    /**
      * Kept for web-app compatibility. The Parent App is LIGHT-ONLY, so this is a no-op:
      * the site cannot switch the native chrome (status bar, navigation bar, splash) to dark.
      * JavaScript call: window.<app.jsBridgeName>.setTheme(true);  // ignored

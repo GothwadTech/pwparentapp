@@ -52,6 +52,14 @@ jobs:
       - name: Assemble Release (unsigned)
         run: ./gradlew assembleRelease --no-daemon --stacktrace
 
+      # NOTE: `testReleaseUnitTest` is intentionally NOT wired into CI yet. With this stack
+      # (AGP 9 + Gradle 9 + KSP) the unit-test variant's KSP task crashes in CI with
+      # "ApplicationManager.getApplication() is null" — while `assembleRelease` (the real build)
+      # is fine. The reminder tests are pure JVM logic and run normally in Android Studio:
+      #   ./gradlew testReleaseUnitTest --tests "com.pw.parent.Reminder*"
+      # tools/report_test_failures.py turns their JUnit XML into check annotations once the KSP
+      # task is fixed upstream.
+
       - name: Upload Unsigned APK (debugging aid)
         if: always()
         uses: actions/upload-artifact@v4

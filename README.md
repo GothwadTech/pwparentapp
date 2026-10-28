@@ -187,6 +187,52 @@ session/theme/caching behaviour follows automatically.
 
 ---
 
+## ⏰ Scheduled Parent Reminders (works WITHOUT Firebase)
+
+The app can nudge parents on its own — **no FCM, no backend, no `google-services.json` needed**.
+
+- **When:** every **Monday**, at **06:00, 08:00, 10:00, 12:00, 14:00, 16:00 and 18:00** (local time)
+  — i.e. a reminder every 2 hours from morning to evening, the window weekly results are shared.
+- **What:** a rotating set of parent-facing messages ("Parents, please track your child's
+  performance", "Test result is out", "Weekly progress update", …) defined in
+  `utils/ReminderScheduler.kt` (`MESSAGES`).
+- **How:** `ReminderScheduler` keeps exactly one chained `OneTimeWorkRequest` alive. The worker
+  posts the notification and queues the next slot, so there is no polling and no battery drain.
+  WorkManager persists the chain across reboots, app kills and Doze; the schedule is recomputed on
+  every app start so timezone/clock changes cannot drift it.
+- **Duplicates / late runs:** each slot carries its timestamp, a slot already delivered is skipped
+  (duplicate executions are harmless) and a slot that is more than 3 hours late is dropped instead
+  of spamming the parent.
+- **Control from the web app:** `window.<app.jsBridgeName>.setRemindersEnabled(false)` /
+  `.getRemindersEnabled()`. Default is **enabled**.
+- **Requires** the `POST_NOTIFICATIONS` runtime permission (already requested on first launch);
+  without it the reminders are silently skipped by Android.
+
+### Testing a reminder without waiting for Monday
+
+The real reminders only fire on Monday, so there are two instant ways to check the notification:
+
+1. **Hidden gesture (on device, works in release builds):** swipe **left↔right twice** in the strip
+   immediately **below** the status bar (the 48dp band at the very top of the page — the status bar
+   itself is SystemUI and no app can read touches there). The first swipe shows a small toast, the
+   second posts one notification. Repeating the pair is rate-limited (8s cooldown) so it cannot spam.
+2. **From the web app:** `window.<app.jsBridgeName>.sendTestReminder();` posts the same
+   notification immediately and returns the title used.
+
+Pure-JVM tests for the cadence live in `app/src/test/java/com/pw/parent/ReminderScheduleTest.kt`
+and for the gesture in `ReminderSwipeTrackerTest.kt`. Run them locally with:
+
+```bash
+./gradlew testReleaseUnitTest --tests "com.pw.parent.Reminder*"
+```
+
+They are not wired into the CI job yet: with AGP 9 + Gradle 9 + KSP, the unit-test variant's KSP
+task crashes in CI (`ApplicationManager.getApplication() is null`) while `assembleRelease` builds
+fine. `tools/report_test_failures.py` is ready to surface their failures as check annotations once
+that is fixed.
+
+---
+
 ## 🔔 Push Notifications (FCM) — setup required
 
 The app ships with FCM code, but **push notifications stay disabled until Firebase is wired up**.
