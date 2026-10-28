@@ -220,7 +220,16 @@ The real reminders only fire on Monday, so there are two instant ways to check t
    notification immediately and returns the title used.
 
 Pure-JVM tests for the cadence live in `app/src/test/java/com/pw/parent/ReminderScheduleTest.kt`
-and for the gesture in `ReminderSwipeTrackerTest.kt`; both run on every pull request.
+and for the gesture in `ReminderSwipeTrackerTest.kt`. Run them locally with:
+
+```bash
+./gradlew testReleaseUnitTest --tests "com.pw.parent.Reminder*"
+```
+
+They are not wired into the CI job yet: with AGP 9 + Gradle 9 + KSP, the unit-test variant's KSP
+task crashes in CI (`ApplicationManager.getApplication() is null`) while `assembleRelease` builds
+fine. `tools/report_test_failures.py` is ready to surface their failures as check annotations once
+that is fixed.
 
 ---
 
