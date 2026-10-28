@@ -62,6 +62,10 @@ jobs:
             --tests "com.pw.parent.ReminderScheduleTest" \
             --tests "com.pw.parent.ReminderSwipeTrackerTest"
 
+      - name: Report failing unit tests as annotations
+        if: failure()
+        run: python3 tools/report_test_failures.py
+
       - name: Upload Unsigned APK (debugging aid)
         if: always()
         uses: actions/upload-artifact@v4
